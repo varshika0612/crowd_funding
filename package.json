@@ -1,0 +1,22 @@
+{
+  "name": "crowdfunding-dapp",
+  "version": "1.0.0",
+  "description": "A simple crowdfunding smart contract DApp for midterm submission",
+  "main": "index.js",
+  "scripts": {
+    "test": "npx hardhat test",
+    "deploy": "npx hardhat run scripts/deploy.js"
+  },
+  "keywords": [
+    "solidity",
+    "hardhat",
+    "crowdfunding",
+    "ethereum"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^3.0.0",
+    "hardhat": "^2.22.0"
+  }
+}
