@@ -1,221 +1,142 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-// Errors
-error Crowdfunding__DeadlineNotReached();
-error Crowdfunding__GoalAlreadyMet();
-error Crowdfunding__NotCampaignOwner();
-error Crowdfunding__CampaignEnded();
-error Crowdfunding__InvalidContribution();
-error Crowdfunding__NoContributionFound();
-error Crowdfunding__FundsAlreadyClaimed();
-error Crowdfunding__TransferFailed();
-error Crowdfunding__ProfileAlreadySet();
-error Crowdfunding__ProfileNotSet();
-
 contract Crowdfunding {
-    // Type declarations
+    
+    enum Category {
+        Tech, 
+        Startup, 
+        Art, 
+        Health, 
+        Animals, 
+        Environment, 
+        Other
+    }
+
     struct Campaign {
         address owner;
-        uint256 goal;
-        uint256 deadline;
+        uint goal;
+        uint deadline;
         string title;
-        uint256 totalFunds;
+        uint amountRaised;
         bool fundsClaimed;
-        mapping(address => uint256) contributions;
+        Category category;
     }
 
-    struct UserProfile {
-        string displayName;
+    struct Profile {
+        string name;
         string bio;
         string contact;
-        bool exists;
+        uint totalDonated;
+        bool created;
     }
 
-    // State variables
-    uint256 private s_campaignCount;
-    mapping(uint256 => Campaign) private s_campaigns;
-    mapping(address => UserProfile) private s_userProfiles;
+    uint public campaignCount = 0;
+    mapping(uint => Campaign) public campaigns;
+    mapping(uint => mapping(address => uint)) public contributions;
+    mapping(address => Profile) public profiles;
 
     // Events
-    event CampaignCreated(uint256 indexed campaignId, address owner, string title);
-    event Contributed(uint256 indexed campaignId, address contributor, uint256 amount);
-    event FundsClaimed(uint256 indexed campaignId, uint256 amount);
-    event Refunded(uint256 indexed campaignId, address contributor, uint256 amount);
-    event ProfileUpdated(address indexed user, string displayName);
+    event CampaignCreated(uint campaignId, address owner, string title);
+    event Donated(uint campaignId, address donor, uint amount);
+    event FundsWithdrawn(uint campaignId, uint amount);
+    event Refunded(uint campaignId, address donor, uint amount);
+    event ProfileCreated(address user, string name);
+    event ProfileUpdated(address user, string name);
 
-    // Modifiers
-    modifier onlyOwner(uint256 campaignId) {
-        if (msg.sender != s_campaigns[campaignId].owner) 
-            revert Crowdfunding__NotCampaignOwner();
-        _;
+    // Create a fundraising campaign
+    function createCampaign(string memory _title, uint _goal, uint _durationDays, Category _category) public {
+        campaignCount++;
+        campaigns[campaignCount] = Campaign({
+            owner: msg.sender,
+            goal: _goal,
+            deadline: block.timestamp + (_durationDays * 1 days),
+            title: _title,
+            amountRaised: 0,
+            fundsClaimed: false,
+            category: _category
+        });
+
+        emit CampaignCreated(campaignCount, msg.sender, _title);
     }
 
-    modifier activeCampaign(uint256 campaignId) {
-        if (block.timestamp >= s_campaigns[campaignId].deadline) 
-            revert Crowdfunding__CampaignEnded();
-        _;
+    // Donate to a campaign
+    function donate(uint _campaignId) public payable {
+        require(msg.value > 0, "Donation must be more than 0");
+        Campaign storage c = campaigns[_campaignId];
+        require(block.timestamp < c.deadline, "Campaign ended");
+
+        c.amountRaised += msg.value;
+        contributions[_campaignId][msg.sender] += msg.value;
+
+        if (profiles[msg.sender].created) {
+            profiles[msg.sender].totalDonated += msg.value;
+        }
+
+        emit Donated(_campaignId, msg.sender, msg.value);
     }
 
-    modifier profileNotSet() {
-        if (s_userProfiles[msg.sender].exists) 
-            revert Crowdfunding__ProfileAlreadySet();
-        _;
+    // Claim funds after success
+    function claimFunds(uint _campaignId) public {
+        Campaign storage c = campaigns[_campaignId];
+        require(msg.sender == c.owner, "Not campaign owner");
+        require(block.timestamp >= c.deadline, "Wait for deadline");
+        require(c.amountRaised >= c.goal, "Goal not reached");
+        require(!c.fundsClaimed, "Already claimed");
+
+        c.fundsClaimed = true;
+        payable(msg.sender).transfer(c.amountRaised);
+
+        emit FundsWithdrawn(_campaignId, c.amountRaised);
     }
 
-    // External functions
-    function createCampaign(
-        uint256 _goal,
-        uint256 _durationInDays,
-        string memory _title
-    ) external {
-        require(_durationInDays > 0, "Duration must be >0 days");
-        
-        s_campaignCount++;
-        Campaign storage newCampaign = s_campaigns[s_campaignCount];
-        
-        newCampaign.owner = msg.sender;
-        newCampaign.goal = _goal;
-        newCampaign.deadline = block.timestamp + (_durationInDays * 1 days);
-        newCampaign.title = _title;
-        
-        emit CampaignCreated(s_campaignCount, msg.sender, _title);
+    // Get refund if campaign failed
+    function refund(uint _campaignId) public {
+        Campaign storage c = campaigns[_campaignId];
+        require(block.timestamp >= c.deadline, "Campaign still active");
+        require(c.amountRaised < c.goal, "Goal was met");
+
+        uint donated = contributions[_campaignId][msg.sender];
+        require(donated > 0, "No donation found");
+
+        contributions[_campaignId][msg.sender] = 0;
+        payable(msg.sender).transfer(donated);
+
+        if (profiles[msg.sender].created) {
+            profiles[msg.sender].totalDonated -= donated;
+        }
+
+        emit Refunded(_campaignId, msg.sender, donated);
     }
 
-    function contribute(uint256 campaignId) 
-        external 
-        payable 
-        activeCampaign(campaignId) 
-    {
-        Campaign storage campaign = s_campaigns[campaignId];
-        
-        if (msg.value == 0) revert Crowdfunding__InvalidContribution();
-        
-        campaign.totalFunds += msg.value;
-        campaign.contributions[msg.sender] += msg.value;
-        
-        emit Contributed(campaignId, msg.sender, msg.value);
-    }
+    // Create a user profile
+    function createProfile(string memory _name, string memory _bio, string memory _contact) public {
+        require(!profiles[msg.sender].created, "Profile already exists");
 
-    // Public functions
-    function setUserProfile(
-        string memory _displayName,
-        string memory _bio,
-        string memory _contact
-    ) public profileNotSet {
-        s_userProfiles[msg.sender] = UserProfile({
-            displayName: _displayName,
+        profiles[msg.sender] = Profile({
+            name: _name,
             bio: _bio,
             contact: _contact,
-            exists: true
+            totalDonated: 0,
+            created: true
         });
-        emit ProfileUpdated(msg.sender, _displayName);
+
+        emit ProfileCreated(msg.sender, _name);
     }
 
-    function updateUserProfile(
-        string memory _displayName,
-        string memory _bio,
-        string memory _contact
-    ) public {
-        if (!s_userProfiles[msg.sender].exists) 
-            revert Crowdfunding__ProfileNotSet();
-            
-        s_userProfiles[msg.sender] = UserProfile({
-            displayName: _displayName,
-            bio: _bio,
-            contact: _contact,
-            exists: true
-        });
-        emit ProfileUpdated(msg.sender, _displayName);
+    // Update existing profile
+    function updateProfile(string memory _name, string memory _bio, string memory _contact) public {
+        require(profiles[msg.sender].created, "No profile yet");
+
+        profiles[msg.sender].name = _name;
+        profiles[msg.sender].bio = _bio;
+        profiles[msg.sender].contact = _contact;
+
+        emit ProfileUpdated(msg.sender, _name);
     }
 
-    function claimFunds(uint256 campaignId) public onlyOwner(campaignId) {
-        Campaign storage campaign = s_campaigns[campaignId];
-        
-        if (block.timestamp < campaign.deadline) 
-            revert Crowdfunding__DeadlineNotReached();
-        if (campaign.totalFunds < campaign.goal) 
-            revert Crowdfunding__GoalAlreadyMet();
-        if (campaign.fundsClaimed) 
-            revert Crowdfunding__FundsAlreadyClaimed();
-        
-        campaign.fundsClaimed = true;
-        (bool success, ) = payable(msg.sender).call{value: campaign.totalFunds}("");
-        if (!success) revert Crowdfunding__TransferFailed();
-        
-        emit FundsClaimed(campaignId, campaign.totalFunds);
-    }
-
-    function getRefund(uint256 campaignId) public {
-        Campaign storage campaign = s_campaigns[campaignId];
-        
-        if (block.timestamp < campaign.deadline) 
-            revert Crowdfunding__DeadlineNotReached();
-        if (campaign.totalFunds >= campaign.goal) 
-            revert Crowdfunding__GoalAlreadyMet();
-        
-        uint256 amount = campaign.contributions[msg.sender];
-        if (amount == 0) revert Crowdfunding__NoContributionFound();
-        
-        campaign.contributions[msg.sender] = 0;
-        (bool success, ) = payable(msg.sender).call{value: amount}("");
-        if (!success) revert Crowdfunding__TransferFailed();
-        
-        emit Refunded(campaignId, msg.sender, amount);
-    }
-
-    // View & pure functions
-    function getCampaign(uint256 campaignId) 
-        public 
-        view 
-        returns (
-            address owner,
-            uint256 goal,
-            uint256 deadline,
-            string memory title,
-            uint256 totalFunds,
-            bool fundsClaimed
-        ) 
-    {
-        Campaign storage campaign = s_campaigns[campaignId];
-        return (
-            campaign.owner,
-            campaign.goal,
-            campaign.deadline,
-            campaign.title,
-            campaign.totalFunds,
-            campaign.fundsClaimed
-        );
-    }
-
-    function getUserProfile(address user)
-        public
-        view
-        returns (
-            string memory displayName,
-            string memory bio,
-            string memory contact,
-            bool exists
-        )
-    {
-        UserProfile storage profile = s_userProfiles[user];
-        return (
-            profile.displayName,
-            profile.bio,
-            profile.contact,
-            profile.exists
-        );
-    }
-
-    function getContribution(uint256 campaignId, address contributor) 
-        public 
-        view 
-        returns (uint256) 
-    {
-        return s_campaigns[campaignId].contributions[contributor];
-    }
-
-    function getCampaignCount() public view returns (uint256) {
-        return s_campaignCount;
+    // View contribution amount
+    function getMyContribution(uint _campaignId) public view returns (uint) {
+        return contributions[_campaignId][msg.sender];
     }
 }
