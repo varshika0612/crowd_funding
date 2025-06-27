@@ -1,106 +1,101 @@
-# 💰 Crowdfunding DApp (Solidity)
+# Crowdfunding Smart Contract
 
-This is a simple decentralized crowdfunding smart contract built using **Solidity**. It allows users to create campaigns, donate ETH, manage their profiles, and claim or refund funds based on campaign results.
-
-> 🎓 Made by a college student exploring Ethereum smart contracts.
+This project implements a basic crowdfunding platform using Solidity. It allows users to create fundraising campaigns, contribute Ether (ETH), claim raised funds if the campaign succeeds, and request refunds if the campaign fails. Additionally, users can create and manage personal profiles to track their participation in the system.
 
 ---
 
-## 🚀 Features
+## Features
 
-- ✅ Create fundraising campaigns with deadlines and goals  
-- 💸 Contribute ETH to any active campaign  
-- 🎯 Claim funds if the campaign meets its goal after the deadline  
-- 💔 Refund donations if the campaign fails  
-- 👤 Create and update user profiles with display name, bio, and contact  
-- 📊 Track individual user contributions per campaign  
+### Campaign Management
 
----
+- **Campaign Creation**  
+  Users can create a new campaign by specifying:
+  - `title`: Campaign name  
+  - `goal`: Fundraising goal in wei  
+  - `durationInDays`: Duration of the campaign  
+  - `category`: Enum representing the type of campaign (e.g., Tech, Art, Health)
 
-## 🛠️ Tech Stack
+- **Donation (Contribution)**  
+  Any user can contribute ETH to an active campaign using the `donate()` function. Contributions are only accepted while the campaign is active (before its deadline).
 
-| Layer        | Tools Used          |
-|-------------|---------------------|
-| Smart Contract | Solidity (`^0.8.0`) |
-| Development  | Remix IDE / Hardhat |
-| Network      | JavaScript VM (Remix) or Localhost/Testnet (Hardhat) |
+- **Claiming Funds**  
+  If a campaign reaches or exceeds its goal by the deadline, the owner can claim the total amount using `claimFunds()`.
 
----
-
-## 🔨 How It Works
-
-### 🧾 Campaign
-
-Each campaign has:
-- An owner (creator)
-- A funding goal (in wei)
-- A deadline (in days)
-- A title
-- A category (like Tech, Art, Health, etc.)
-- Amount of ETH raised
-- Status: whether funds were claimed or not
-
-### 🧑‍🤝‍🧑 User Profile
-
-Each user can:
-- Create a profile (once)
-- Update their profile info (name, bio, contact)
-- View how much they’ve donated in total
-
-### ⏰ Contribution & Refund Logic
-
-- If a campaign **ends and reaches its goal**, only the owner can claim the funds.
-- If the campaign **fails to meet the goal**, users can request a **refund**.
-- Users can only donate before the deadline.
+- **Refunds**  
+  If the campaign fails to meet its goal by the deadline, contributors can reclaim their donations using `refund()`.
 
 ---
 
-## 🧪 How to Test (Remix Quick Start)
+### User Profile Management
 
-1. Go to [https://remix.ethereum.org](https://remix.ethereum.org)
-2. Create a new file `Crowdfunding.sol`
-3. Paste the contract code
-4. Compile it using Solidity `^0.8.0`
-5. Deploy using “JavaScript VM” (no wallet needed)
-6. Try:
-   - `createCampaign()`
-   - `donate()` with ETH value
-   - `claimFunds()` after time passes
-   - `refund()` if goal not met
-   - `createProfile()` and `updateProfile()`
+- **Create Profile**  
+  Users can create a profile with `createProfile(name, bio, contact)` which includes their display name, bio, and contact information. Each user may only create one profile.
+
+- **Update Profile**  
+  Existing profiles can be updated using `updateProfile(name, bio, contact)`.
+
+- **Track Donations**  
+  The system tracks each user’s total donations across all campaigns, which is viewable via their profile.
 
 ---
 
-## 🧠 Learning Goals
+## Contract Functions Overview
 
-✅ Understand how to:
-- Use structs, mappings, and enums  
-- Handle ETH transfers with `payable`  
-- Use time-based logic (`block.timestamp`)  
-- Track user state and contributions  
-- Write a gas-efficient yet readable contract  
-
----
-
-## 📸 Screenshots (Optional)
-
-> 📷 Add Remix screenshots of:
-> - Creating a campaign
-> - Donating
-> - Claiming funds
-> - Getting refund
-> - Setting profile
+| Function Name         | Description |
+|-----------------------|-------------|
+| `createCampaign(...)` | Starts a new campaign with a funding goal, deadline, and category |
+| `donate(...)`         | Allows users to contribute ETH to an active campaign |
+| `claimFunds(...)`     | Lets campaign owner claim funds if the goal is met after deadline |
+| `refund(...)`         | Allows contributors to retrieve funds from a failed campaign |
+| `createProfile(...)`  | Creates a new user profile |
+| `updateProfile(...)`  | Updates an existing user profile |
+| `getMyContribution(...)` | Returns the ETH contributed by the caller to a specific campaign |
+| `campaigns(...)`      | Public mapping of campaign details |
+| `profiles(...)`       | Public mapping of user profiles |
+| `campaignCount`       | Tracks the total number of campaigns created |
 
 ---
 
-## ✍️ Author
+## Categories Supported
 
-**Varshika Cheemala**  
-College Student | Solidity Learner  
-✨ Exploring the power of Web3
+Campaigns can be classified under the following categories:
+- `Tech`
+- `Startup`
+- `Art`
+- `Health`
+- `Animals`
+- `Environment`
+- `Other`
 
 ---
 
-## 📜 License
+## How to Test
 
-MIT License – Free to use and modify.
+This smart contract can be tested using the [Remix Ethereum IDE](https://remix.ethereum.org):
+
+1. Open Remix and paste the Solidity code into a new file (e.g., `Crowdfunding.sol`)
+2. Compile with Solidity version `^0.8.0`
+3. Use the **JavaScript VM** environment to deploy the contract
+4. Use the available contract functions to:
+   - Create campaigns
+   - Donate using the `Value` field (ETH amount)
+   - Simulate deadline expiry (using `vm` controls or delays)
+   - Claim or refund funds
+   - Create and update user profiles
+
+---
+
+## Solidity Concepts Used
+
+- `struct`, `mapping`, and `enum` for data modeling  
+- `payable` functions for ETH transactions  
+- `block.timestamp` to manage campaign deadlines  
+- `require()` for input validation and access control  
+- Basic use of events for state transparency
+
+---
+
+## License
+
+This project is open source and available under the MIT License.
+
