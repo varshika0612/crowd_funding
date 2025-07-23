@@ -31,10 +31,23 @@ contract Crowdfunding {
         bool created;
     }
 
+   struct Request {
+    string description;
+    address payable recipient;
+    uint value;
+    bool complete;
+    uint approvalCount;
+    mapping(address => bool) approvals;
+}
+
     uint public campaignCount = 0;
     mapping(uint => Campaign) public campaigns;
     mapping(uint => mapping(address => uint)) public contributions;
     mapping(address => Profile) public profiles;
+    mapping(uint => Request[]) private campaignRequests;
+    mapping(uint => mapping(uint => mapping(address => bool))) private approvals;
+    mapping(uint => uint) public contributorsCount;
+    mapping(uint => mapping(address => bool)) public isContributor;
 
     // Events
     event CampaignCreated(uint campaignId, address owner, string title);
@@ -62,20 +75,27 @@ contract Crowdfunding {
 
     // Donate to a campaign
     function donate(uint _campaignId) public payable {
-        require(msg.value > 0, "Donation must be more than 0");
-        Campaign storage c = campaigns[_campaignId];
-        require(block.timestamp < c.deadline, "Campaign ended");
+    require(msg.value > 0, "Donation must be more than 0");
+    Campaign storage c = campaigns[_campaignId];
+    require(block.timestamp < c.deadline, "Campaign ended");
 
-        c.amountRaised += msg.value;
-        contributions[_campaignId][msg.sender] += msg.value;
+    c.amountRaised += msg.value;
 
-        if (profiles[msg.sender].created) {
-            profiles[msg.sender].totalDonated += msg.value;
-        }
-
-        emit Donated(_campaignId, msg.sender, msg.value);
+    if(!isContributor[_campaignId][msg.sender]) {
+        isContributor[_campaignId][msg.sender] = true;
+        contributorsCount[_campaignId]++;
     }
 
+    contributions[_campaignId][msg.sender] += msg.value;
+
+    if (profiles[msg.sender].created) {
+        profiles[msg.sender].totalDonated += msg.value;
+    }
+
+    emit Donated(_campaignId, msg.sender, msg.value);
+}
+
+    
     // Claim funds after success
     function claimFunds(uint _campaignId) public {
         Campaign storage c = campaigns[_campaignId];
@@ -89,6 +109,69 @@ contract Crowdfunding {
 
         emit FundsWithdrawn(_campaignId, c.amountRaised);
     }
+    // Create spending request for a campaign
+function createRequest(
+    uint _campaignId,
+    string memory _description,
+    address payable _recipient,
+    uint _value
+) public {
+    Campaign storage c = campaigns[_campaignId];
+    require(msg.sender == c.owner, "Only campaign owner can create request");
+    require(c.amountRaised >= _value, "Requested value exceeds funds raised");
+
+    campaignRequests[_campaignId].push(
+        Request({
+            description: _description,
+            recipient: _recipient,
+            value: _value,
+            complete: false,
+            approvalCount: 0
+        })
+    );
+}
+
+// Approve a spending request
+function approveRequest(uint _campaignId, uint _requestIndex) public {
+    require(contributions[_campaignId][msg.sender] > 0, "Must be contributor to approve");
+
+    require(
+        !approvals[_campaignId][_requestIndex][msg.sender],
+        "Already approved this request"
+    );
+
+    approvals[_campaignId][_requestIndex][msg.sender] = true;
+    Request storage request = campaignRequests[_campaignId][_requestIndex];
+    request.approvalCount += 1;
+}
+
+// Finalize spending request and transfer funds
+function finalizeRequest(uint _campaignId, uint _requestIndex) public {
+    Campaign storage c = campaigns[_campaignId];
+    Request storage request = campaignRequests[_campaignId][_requestIndex];
+
+    require(msg.sender == c.owner, "Only campaign owner can finalize");
+    require(!request.complete, "Request already completed");
+    // For simplicity: Require majority approval (over 50% of contributors)
+    // You can track contributorsCount separately if preferred.
+    uint contributorsCount = 0;
+    for (uint i = 0; i < campaignCount; i++) {
+        if (contributions[_campaignId][msg.sender] > 0) {
+            contributorsCount++;
+        }
+    }
+    require(
+    request.approvalCount > (contributorsCount[_campaignId] / 2),
+    "Not enough approvals"
+);
+
+    require(c.amountRaised >= request.value, "Not enough funds");
+
+    request.complete = true;
+    c.amountRaised -= request.value;
+    request.recipient.transfer(request.value);
+    emit FundsWithdrawn(_campaignId, request.value);
+}
 
     // Get refund if campaign failed
     function refund(uint _campaignId) public {
@@ -139,4 +222,32 @@ contract Crowdfunding {
     function getMyContribution(uint _campaignId) public view returns (uint) {
         return contributions[_campaignId][msg.sender];
     }
+    function getRequestCount(uint _campaignId) public view returns (uint) {
+    return campaignRequests[_campaignId].length;
+}
+
+function getRequest(
+    uint _campaignId,
+    uint _index
+)
+    public
+    view
+    returns (
+        string memory description,
+        address recipient,
+        uint value,
+        bool complete,
+        uint approvalCount
+    )
+{
+    Request storage request = campaignRequests[_campaignId][_index];
+    return (
+        request.description,
+        request.recipient,
+        request.value,
+        request.complete,
+        request.approvalCount
+    );
+}
+
 }
